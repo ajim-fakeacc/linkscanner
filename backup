@@ -1,0 +1,502 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // For Clipboard
+import 'package:url_launcher/url_launcher.dart';
+
+void main() {
+  runApp(const LinkCheckerApp());
+}
+
+class LinkCheckerApp extends StatelessWidget {
+  const LinkCheckerApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Link Checker',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        scaffoldBackgroundColor: const Color(0xFFF5F5F5), // Light grey background
+        useMaterial3: true,
+      ),
+      home: const MainScreen(),
+    );
+  }
+}
+
+class MainScreen extends StatefulWidget {
+  const MainScreen({super.key});
+
+  @override
+  State<MainScreen> createState() => _MainScreenState();
+}
+
+class _MainScreenState extends State<MainScreen> {
+  int _currentIndex = 1; // Start on the "Scan" page (middle)
+
+  // List of the 3 pages
+  final List<Widget> _pages = [
+    const MessagesPage(),
+    const ScanPage(),
+    const SettingsPage(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.verified_user_outlined, color: Colors.white),
+            SizedBox(width: 10),
+            Text("LinkScanner", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        backgroundColor: Colors.blue,
+        centerTitle: true,
+        elevation: 0,
+      ),
+      body: _pages[_currentIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        selectedItemColor: Colors.blue,
+        unselectedItemColor: Colors.grey,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline), label: "Messages"),
+          BottomNavigationBarItem(icon: Icon(Icons.center_focus_strong), label: "Scan"),
+          BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), label: "Settings"),
+        ],
+      ),
+    );
+  }
+}
+
+// ======================= PAGE 1: MESSAGES SCREEN =======================
+class MessagesPage extends StatelessWidget {
+  const MessagesPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.blue.shade50,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.info_outline, color: Colors.blue),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  "Auto-Scan Active: All incoming messages with links are automatically analyzed",
+                  style: TextStyle(color: Colors.blue, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        const Text("Recent Messages", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 10),
+        _buildMessageCard(
+          context,
+          sender: "Amazon",
+          time: "10:30 AM",
+          message: "Your package has been shipped! Track it here:",
+          link: "http://amzn-tracking.com/123456",
+          isSafe: true,
+        ),
+        _buildMessageCard(
+          context,
+          sender: "Unknown",
+          time: "11:45 AM",
+          message: "Urgent: Your account has been compromised. Reset password immediately:",
+          link: "suspici0us-site.net/reset",
+          isSafe: false,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMessageCard(BuildContext context, {
+    required String sender,
+    required String time,
+    required String message,
+    required String link,
+    required bool isSafe,
+  }) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(sender, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text(time, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(message),
+            const SizedBox(height: 4),
+            Text(link, style: const TextStyle(color: Colors.blue)),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(
+                  isSafe ? Icons.check_circle_outline : Icons.warning_amber_rounded,
+                  color: isSafe ? Colors.green : Colors.red,
+                  size: 20,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  isSafe ? "Safe link detected" : "Suspicious link detected",
+                  style: TextStyle(
+                    color: isSafe ? Colors.green : Colors.red,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const Spacer(),
+                ElevatedButton.icon(
+                  onPressed: () {
+                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Scanning Link...")));
+                  },
+                  icon: const Icon(Icons.open_in_new, size: 16),
+                  label: const Text("Scan"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  ),
+                )
+              ],
+            )
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ======================= PAGE 2: SCAN SCREEN =======================
+// ======================= PAGE 2: SCAN SCREEN (FIXED) =======================
+class ScanPage extends StatefulWidget {
+  const ScanPage({super.key});
+
+  @override
+  State<ScanPage> createState() => _ScanPageState();
+}
+
+class _ScanPageState extends State<ScanPage> {
+  final TextEditingController _urlController = TextEditingController();
+
+  void _scanLink() async {
+    final String url = _urlController.text.trim();
+    if (url.isEmpty) return;
+    
+    // Show loading spinner
+    showDialog(
+      context: context, 
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator())
+    );
+    
+    await Future.delayed(const Duration(seconds: 1)); // Wait 1 second
+    if (mounted) Navigator.pop(context); // Close loader
+
+    bool isSafe = !(url.contains("virus") || url.contains("malware"));
+    if (mounted) _showResultDialog(context, url, isSafe: isSafe);
+  }
+
+  void _showResultDialog(BuildContext context, String url, {required bool isSafe}) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: isSafe ? Colors.green.shade50 : Colors.red.shade50,
+        title: Row(
+          children: [
+            Icon(isSafe ? Icons.check_circle : Icons.warning, color: isSafe ? Colors.green : Colors.red),
+            const SizedBox(width: 10),
+            Text(isSafe ? "Safe" : "Dangerous"),
+          ],
+        ),
+        content: Text("Link: $url\n\nResult: ${isSafe ? "Safe to visit" : "Potential Threat Detected"}"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Close")),
+          if (isSafe)
+            FilledButton(
+              onPressed: () => launchUrl(Uri.parse(url)),
+              child: const Text("Open"),
+            )
+        ],
+      ),
+    );
+  }
+
+  // --- THIS IS THE POPUP FUNCTION ---
+  void _showPhishingTips(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("Phishing Prevention Tips", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+              
+              // WARNING SIGNS
+              const Row(children: [
+                Icon(Icons.error_outline, color: Colors.red),
+                SizedBox(width: 10),
+                Text("Warning Signs", style: TextStyle(fontSize: 16, color: Colors.red, fontWeight: FontWeight.bold)),
+              ]),
+              const SizedBox(height: 10),
+              _buildBulletPoint("Urgent action required or limited time offers"),
+              _buildBulletPoint("Requests for personal information"),
+              _buildBulletPoint("Mismatched or suspicious URLs"),
+              _buildBulletPoint("Poor grammar or spelling errors"),
+
+              const SizedBox(height: 20),
+
+              // BEST PRACTICES
+              const Row(children: [
+                Icon(Icons.check_circle_outline, color: Colors.green),
+                SizedBox(width: 10),
+                Text("Best Practices", style: TextStyle(fontSize: 16, color: Colors.green, fontWeight: FontWeight.bold)),
+              ]),
+              const SizedBox(height: 10),
+              _buildBulletPoint("Verify sender's identity", isGreen: true),
+              _buildBulletPoint("Type URLs directly in browser", isGreen: true),
+              _buildBulletPoint("Enable two-factor authentication", isGreen: true),
+
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Got it"),
+                ),
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBulletPoint(String text, {bool isGreen = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0, left: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("•", style: TextStyle(fontSize: 18, color: isGreen ? Colors.green : Colors.red)),
+          const SizedBox(width: 8),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 14, height: 1.4))),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView( // Added scrolling to prevent overflow
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          // SCAN CARD
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.link, color: Colors.blue),
+                    SizedBox(width: 8),
+                    Text("Link Scanner", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Text("Enter URL to scan", style: TextStyle(color: Colors.grey)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _urlController,
+                  decoration: InputDecoration(
+                    hintText: "https://example.com",
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.grey.shade300,
+                      foregroundColor: Colors.black54,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      elevation: 0,
+                    ),
+                    onPressed: _scanLink,
+                    child: const Text("Scan Link", style: TextStyle(fontSize: 16)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          
+          // INFO CARD
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.security, color: Colors.blue),
+                    SizedBox(width: 8),
+                    Text("Auto-Scan Protection", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blue)),
+                  ],
+                ),
+                SizedBox(height: 10),
+                Text(
+                  "LinkScanner is actively monitoring your messages and clipboard for suspicious links.",
+                  style: TextStyle(color: Colors.blue, height: 1.5),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // TIPS CARD (With the SHOW button)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Expanded(
+                  child: Text("How to identify phishing attacks", style: TextStyle(fontWeight: FontWeight.w500))
+                ),
+                TextButton(
+                  onPressed: () => _showPhishingTips(context), // <--- THIS LINE MAKES IT WORK
+                  child: const Text("Show", style: TextStyle(fontWeight: FontWeight.bold)),
+                )
+              ],
+            ),
+          )
+        ],
+      ),
+    );
+  }
+}
+
+// ======================= PAGE 3: SETTINGS SCREEN =======================
+class SettingsPage extends StatefulWidget {
+  const SettingsPage({super.key});
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  bool _autoScanSMS = false;
+  bool _scanClipboard = false;
+  bool _advancedProtection = false;
+  bool _blockSuspicious = false;
+  bool _syncSMS = false;
+  bool _syncEmail = false;
+  bool _backgroundScan = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _buildSectionHeader("Security Settings", Icons.security),
+        _buildCard([
+          _buildSwitch("Auto-scan SMS links", "Automatically detect and scan links in messages", _autoScanSMS, (v) => setState(() => _autoScanSMS = v)),
+          _buildSwitch("Scan links in clipboard", "Scan links when copied to clipboard", _scanClipboard, (v) => setState(() => _scanClipboard = v)),
+          _buildSwitch("Advanced protection", "Use cloud-based scanning for better detection", _advancedProtection, (v) => setState(() => _advancedProtection = v)),
+          _buildSwitch("Block suspicious links", "Prevent access to potentially harmful websites", _blockSuspicious, (v) => setState(() => _blockSuspicious = v)),
+        ]),
+
+        const SizedBox(height: 20),
+        _buildSectionHeader("Auto-Sync Settings", Icons.sync),
+        _buildCard([
+          _buildSwitch("Sync with SMS app", "Automatically scan links from your SMS messages", _syncSMS, (v) => setState(() => _syncSMS = v)),
+          _buildSwitch("Sync with email app", "Scan links from your email messages", _syncEmail, (v) => setState(() => _syncEmail = v)),
+          _buildSwitch("Background scanning", "Scan links even when app is closed", _backgroundScan, (v) => setState(() => _backgroundScan = v), isBlue: true),
+        ]),
+      ],
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10, left: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: Colors.black87),
+          const SizedBox(width: 8),
+          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCard(List<Widget> children) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)],
+      ),
+      child: Column(children: children),
+    );
+  }
+
+  Widget _buildSwitch(String title, String subtitle, bool value, Function(bool) onChanged, {bool isBlue = false}) {
+    return SwitchListTile(
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+      value: value,
+      onChanged: onChanged,
+      activeColor: isBlue ? Colors.blue : Colors.grey.shade400,
+      activeTrackColor: isBlue ? Colors.blue.shade100 : Colors.grey.shade300,
+    );
+  }
+}
